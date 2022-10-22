@@ -7,29 +7,31 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from random import randint
 from time import time, sleep, localtime
+
 import json
 import logging
 import openpyxl
 import re
 import requests
-from urllib.parse import unquote
 
 DEFAULT_IMPLICIT_WAIT = 1
-
-
-
-with open('infos/usernames.txt', 'r') as f:
-    usernames = [line.strip() for line in f]
 
 
 class Bot(object):
 
     def __init__(self, headless=False, profileDir=None):
-        self.ttAuthorPageCookie = ""
-        self.ttCreatorMarketCookie = ""
-        self.fetchNums = 100
+        f = open('infos/config.json', )
+        botConfig = json.load(f)
+
+        self.ttAuthorPageCookie = botConfig["tt_user_page_cookie"]
+        self.ttCreatorMarketCookie = botConfig["tt_market_cookie"]
+        self.fetchNums = botConfig["fetch_nums"]
+        self.fetchInterval = botConfig["fetch_interval"]
+        self.kickFirst = True
         self.selectors = {
-            "btn_next": "//button[@class='btn-next']"
+            'user_bio': "//*[@data-e2e='user-bio']",
+            "btn_next": "//button[@class='btn-next']",
+            "contact_link": "//*[@data-e2e='user-bio']/../div[2]/a/span"
         }
         self.curUserMap = {}
         self.ttUserHeaders = {
@@ -46,10 +48,10 @@ class Bot(object):
             'sec-fetch-user': '?1',
             'upgrade-insecure-requests': '1',
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36',
-            'Cookie': self.ttAuthorPageCookie
         }
         self.data = [
-            ["core_user_id", "username", "fans", "avg_views", "brief", "engagement_rate", "price", "tt_link", "desc",
+            ["avatar", "core_user_id", "username", "fans", "avg_views", "brief", "engagement_rate", "price", "tt_link",
+             "desc",
              "contact_link"]
         ]
 
@@ -108,7 +110,6 @@ class Bot(object):
             print(name)
 
             if name == "beiens":
-                self.__fetch_info()
                 self.__run_crawler()
 
             self.__random_sleep__(730, 740)
@@ -263,6 +264,10 @@ class Bot(object):
                 if resContent["code"] == 0 and resContent["msg"] == "Success":
                     authors = resContent["data"].get("authors")
                     if authors is not None:
+                        if not self.kickFirst:
+                            print("first 20 data is not match, kick first and continue")
+                            self.kickFirst = True
+                            return
                         totalCount = resContent["data"].get("pagination").get("total_count")
                         totalCount = int(totalCount)
                         if self.fetchNums > totalCount:
@@ -271,24 +276,28 @@ class Bot(object):
                             if self.curUserMap.get(author.get("handle_name")):
                                 continue
                             ttUserLink = f'https://www.tiktok.com/@{author.get("handle_name")}?lang=en'
-                            # get tt author page
-                            authorDetailRes = requests.request("GET",
-                                                               ttUserLink,
-                                                               headers=self.ttUserHeaders)
-                            # search description
-                            descSearch = re.search(r'<meta data-rh="true" name="description" content="(.*)"/>',
-                                                   authorDetailRes.text, re.M | re.I)
+
                             desc = ""
-                            if descSearch is not None:
-                                desc = descSearch.group().split("/>")[0].split('content="')[1]
-                            print(desc)
-                            # search bio_url
                             contactLink = ""
-                            contactLinkSearch = re.search(r'bioLink":\{"link":"(.*)}', authorDetailRes.text)
-                            if contactLinkSearch is not None:
-                                contactLink = contactLinkSearch.group().split('"')[4]
-                                contactLink = unquote(contactLink)
-                            print(contactLink)
+                            # open new tab for fetch info
+                            newWindow = f'window.open("{ttUserLink}")'
+                            self.driver.execute_script(newWindow)
+                            handles = self.driver.window_handles
+                            self.driver.switch_to.window(handles[len(handles) - 1])
+                            self.__random_sleep__(5, 10)
+                            try:
+                                userBio = self.__get_element__(self.selectors["user_bio"], "xpath")
+                                if userBio is not None:
+                                    desc = userBio.text
+                                contactNode = self.__get_element__(self.selectors["contact_link"], "xpath")
+                                if contactNode is not None:
+                                    contactLink = contactNode.text
+
+                                self.driver.close()
+                                self.driver.switch_to.window(handles[0])
+
+                            except Exception as e:
+                                logging.error(e)
 
                             # fetch from creator market info
                             priceObj = author.get("author_price")
@@ -296,18 +305,26 @@ class Bot(object):
                             if priceObj is not None:
                                 price = priceObj.get("rate") + priceObj.get("currency")
                             self.data.append(
-                                [author.get("core_user_id"), author.get("handle_name"), author.get("reach"),
+                                [author.get("avatar_uri"), author.get("core_user_id"), author.get("handle_name"),
+                                 author.get("reach"),
                                  author.get("avg_views"),
                                  author.get("brief"), author.get("engagement_rate"), price,
                                  ttUserLink, desc, contactLink])
-                            print(f'-------------------fetch next one, cur num: {len(self.data)}----------------------')
-                            self.__random_sleep__(5, 10)
+                            print("username: " + author.get("handle_name"))
+                            print("brief: " + author.get("brief"))
+                            print("link: " + contactLink)
+                            print("description: " + desc)
+                            print(
+                                f'-------------------fetch next one, cur num: {len(self.data) - 1}----------------------')
+                            if len(self.data) - 1 >= self.fetchNums:
+                                return
+                            self.__random_sleep__(self.fetchInterval, self.fetchInterval)
 
     def __run_crawler(self):
         print("fetch info start...")
-
+        self.__fetch_info()
         while len(self.data) < self.fetchNums:
-            print("cur process: " + str(len(self.data)) + "|target nums: " + str(self.fetchNums))
+            print("cur process: " + str(len(self.data) - 1) + "|target nums: " + str(self.fetchNums))
             self.__scrolldown__()
             self.__random_sleep__()
             self.__find_element_and_click(self.selectors["btn_next"], "xpath")
@@ -315,5 +332,4 @@ class Bot(object):
             self.__fetch_info()
 
         self.__save_excel()
-
-
+        exit(0)
