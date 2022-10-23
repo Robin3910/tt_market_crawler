@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 from selenium import webdriver
 from webdriver_manager.chrome import ChromeDriverManager as CM
 from selenium.webdriver.common.by import By
@@ -23,7 +24,6 @@ class Bot(object):
         f = open('infos/config.json', )
         botConfig = json.load(f)
 
-        self.ttAuthorPageCookie = botConfig["tt_user_page_cookie"]
         self.ttCreatorMarketCookie = botConfig["tt_market_cookie"]
         self.fetchNums = botConfig["fetch_nums"]
         self.fetchInterval = botConfig["fetch_interval"]
@@ -118,6 +118,8 @@ class Bot(object):
 
         except Exception as e:
             print(str(e))
+            self.__save_excel()
+            exit(0)
 
     def typeMessage(self, user, message):
         # Go to page and type message
@@ -310,12 +312,12 @@ class Bot(object):
                                  author.get("avg_views"),
                                  author.get("brief"), author.get("engagement_rate"), price,
                                  ttUserLink, desc, contactLink])
-                            print("username: " + author.get("handle_name"))
-                            print("brief: " + author.get("brief"))
-                            print("link: " + contactLink)
-                            print("description: " + desc)
                             print(
-                                f'-------------------fetch next one, cur num: {len(self.data) - 1}----------------------')
+                                f'-------------------fetch success, cur num: {len(self.data) - 1}----------------------')
+                            # print("username: " + author.get("handle_name"))
+                            # print("brief: " + author.get("brief"))
+                            # print("link: " + contactLink)
+                            # print("description: " + desc)
                             if len(self.data) - 1 >= self.fetchNums:
                                 return
                             self.__random_sleep__(self.fetchInterval, self.fetchInterval)
