@@ -1,19 +1,20 @@
 # -*- coding:utf-8 -*-
-from selenium import webdriver
-from webdriver_manager.chrome import ChromeDriverManager as CM
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.common.exceptions import NoSuchElementException
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+import _thread
+import json
+import logging
+import re
 from random import randint
 from time import time, sleep, localtime
 
-import json
-import logging
 import openpyxl
-import re
 import requests
+from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+from selenium.webdriver.support.ui import WebDriverWait
+from webdriver_manager.chrome import ChromeDriverManager as CM
 
 DEFAULT_IMPLICIT_WAIT = 1
 
@@ -109,10 +110,11 @@ class Bot(object):
             name = input()
             print(name)
 
+            _thread.start_new_thread(self.__waiting_for_stop_bot, ())
             if name == "beiens":
                 self.__run_crawler()
 
-            self.__random_sleep__(730, 740)
+            self.__random_sleep__(3600, 3740)
 
             exit(0)
 
@@ -335,3 +337,10 @@ class Bot(object):
 
         self.__save_excel()
         exit(0)
+
+    def __waiting_for_stop_bot(self):
+        cmd = input()
+        if cmd == "stop":
+            self.__save_excel()
+            print("stop the bot!")
+            exit(0)
